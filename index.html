@@ -7,6 +7,15 @@
 <meta name="description" content="Read a barcode from any photo, then regenerate a clean, high-resolution barcode image. Runs entirely in your browser.">
 <title>Barcode Saver &mdash; photo to clean barcode</title>
 <link rel="stylesheet" href="styles.css">
+
+<!-- Icons. iOS ignores favicons for the home screen and uses apple-touch-icon;
+     it downscales this 1280px master to 180x180 and masks it to a squircle. -->
+<link rel="apple-touch-icon" href="logo-small.png">
+<link rel="icon" type="image/png" href="logo-small.png">
+<!-- Home-screen label. Without it iOS falls back to <title>, which is long
+     enough to be truncated under the icon. -->
+<meta name="apple-mobile-web-app-title" content="Barcode Saver">
+
 <!-- All libraries are vendored locally so the app works completely offline. -->
 <script src="vendor/zxing.min.js" defer></script>
 <script src="vendor/JsBarcode.all.min.js" defer></script>
@@ -14,6 +23,14 @@
 <script src="app.js" defer></script>
 </head>
 <body>
+
+<!-- Pull-to-refresh indicator. Touch only, and hidden until you pull. -->
+<div class="ptr" id="ptr" aria-hidden="true">
+  <div class="ptr__inner">
+    <span class="ptr__spinner"></span>
+    <span id="ptr-label">Pull to refresh</span>
+  </div>
+</div>
 
 <header class="app-header">
   <div class="app-header__inner">

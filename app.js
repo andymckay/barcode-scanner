@@ -2010,6 +2010,132 @@ function wireEvents() {
   }
 }
 
+/* --- pull to refresh (touch) ---------------------------------------------- */
+
+const PULL_RESISTANCE = 0.45;  // finger travel -> indicator travel
+const PULL_ARM = 44;           // indicator offset at which releasing refreshes
+const PULL_MAX = 104;          // clamp, so the indicator stays put
+
+/**
+ * Re-read local state and rebuild the view.
+ *
+ * Deliberately non-destructive. The app is offline, so a browser-style reload
+ * would only discard work in progress — a loaded photo, a decode result, a
+ * half-typed name — without fetching anything new. This instead picks up
+ * anything another tab has written and re-renders.
+ */
+function refreshView() {
+  loadLibrary();
+  renderLibrary();
+  syncSaveControls();
+  if (!$('#output-panel').hidden) renderBarcode();
+
+  const n = library.items.length;
+  toast(n
+    ? `Refreshed \u00b7 ${n} saved barcode${n === 1 ? '' : 's'}`
+    : 'Refreshed \u00b7 nothing saved yet');
+}
+
+function initPullToRefresh() {
+  const indicator = $('#ptr');
+  const label = $('#ptr-label');
+  if (!indicator || !label) return;
+
+  let startY = 0;
+  let offset = 0;
+  let dragging = false;
+  let refreshing = false;
+  let releaseTimer = null;
+
+  const applyOffset = (px) => {
+    offset = px;
+    document.documentElement.style.setProperty('--ptr-offset', `${px}px`);
+    clearTimeout(releaseTimer);
+    if (px > 0) {
+      document.body.classList.add('ptr-active');
+    } else {
+      // Hold the class through the retract transition, then drop it.
+      releaseTimer = setTimeout(() => document.body.classList.remove('ptr-active'), 300);
+    }
+  };
+
+  const setDragging = (on) => {
+    dragging = on;
+    document.body.classList.toggle('ptr-drag', on);
+    indicator.classList.toggle('is-pulling', on);
+  };
+
+  const arm = (on) => {
+    indicator.classList.toggle('is-armed', on);
+    label.textContent = on ? 'Release to refresh' : 'Pull to refresh';
+  };
+
+  const reset = () => {
+    setDragging(false);
+    applyOffset(0);
+    arm(false);
+  };
+
+  window.addEventListener('touchstart', (ev) => {
+    if (refreshing || ev.touches.length !== 1 || window.scrollY > 0) return;
+    // Scrollable regions keep the gesture for themselves.
+    if (ev.target.closest && ev.target.closest('.payload, #render-frame')) return;
+    startY = ev.touches[0].clientY;
+    setDragging(true);
+    applyOffset(0);
+    arm(false);
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (ev) => {
+    if (!dragging || refreshing) return;
+    const delta = ev.touches[0].clientY - startY;
+
+    if (delta <= 0 || window.scrollY > 0) {
+      // Not a pull from the top any more — hand the gesture back to the page.
+      reset();
+      return;
+    }
+
+    // Take the gesture over: stops both the rubber-band and the browser's own
+    // refresh affordance, so only one indicator is ever on screen.
+    if (ev.cancelable) ev.preventDefault();
+    applyOffset(Math.min(PULL_MAX, delta * PULL_RESISTANCE));
+    arm(offset >= PULL_ARM);
+  }, { passive: false });
+
+  const finish = async () => {
+    if (!dragging) return;
+    const armed = offset >= PULL_ARM;
+    setDragging(false);
+
+    if (!armed) { reset(); return; }
+
+    refreshing = true;
+    label.textContent = 'Refreshing…';
+    indicator.classList.add('is-refreshing');
+    applyOffset(0);
+
+    // Let the spinner paint before the (synchronous) work starts. nextFrame()
+    // rather than a bare rAF: rAF is paused in a background tab, so pulling and
+    // then switching apps would otherwise leave the indicator spinning forever.
+    await nextFrame();
+    try {
+      refreshView();
+      label.textContent = 'Refreshed';
+    } finally {
+      // Always hand the gesture back, even if the refresh threw.
+      setTimeout(() => {
+        refreshing = false;
+        indicator.classList.remove('is-refreshing');
+        arm(false);
+      }, 600);
+    }
+  };
+
+  window.addEventListener('touchend', finish, { passive: true });
+  window.addEventListener('touchcancel', () => { if (dragging) reset(); }, { passive: true });
+}
+
 function checkLibraries() {
   const missing = [];
   if (!LIB.zxing) missing.push('vendor/zxing.min.js');
@@ -2045,6 +2171,7 @@ function init() {
 
   initRegionSelection();
   wireEvents();
+  initPullToRefresh();
 
   const n = library.items.length;
   $('#dropzone-status').textContent = n

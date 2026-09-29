@@ -729,6 +729,74 @@ input[type="color"] {
 
 /* ─────────────────────────────── print ────────────────────────────── */
 
+/* ────────────────────────── pull to refresh ───────────────────────── */
+
+/* We provide our own gesture, so suppress the browser's (Chrome on Android
+   would otherwise show its spinner at the same time). */
+html { overscroll-behavior-y: contain; }
+
+.ptr {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  /* Resting state sits just above the viewport; pulling slides it into view.
+     52px clears the pill (12px offset + ~30px tall + margin). */
+  transform: translateY(calc(var(--ptr-offset, 0px) - 52px));
+  transition: transform .22s ease-out;
+}
+
+.ptr.is-pulling { transition: none; }
+.ptr.is-refreshing { transform: translateY(0); }
+
+.ptr__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-muted);
+}
+
+.ptr__spinner {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+}
+
+.ptr.is-armed .ptr__inner {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ptr.is-refreshing .ptr__spinner { animation: ptr-spin .65s linear infinite; }
+
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+
+/* The page content follows the pull. Applied only while the gesture is live, so
+   the page is not left with a permanent transform / stacking context. */
+body.ptr-active .app-header,
+body.ptr-active .app-main {
+  transform: translateY(var(--ptr-offset, 0px));
+  transition: transform .22s ease-out;
+}
+
+body.ptr-drag .app-header,
+body.ptr-drag .app-main { transition: none; }
+
 /* ─────────────────────────────── mobile ───────────────────────────── */
 
 /* Shrinking the gutters gives every panel a bit more room on a phone, and
