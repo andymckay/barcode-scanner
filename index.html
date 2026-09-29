@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Read a barcode from any photo, then regenerate a clean, high-resolution barcode image. Runs entirely in your browser.">
+<title>Barcode Saver &mdash; photo to clean barcode</title>
+<link rel="stylesheet" href="styles.css">
+<!-- All libraries are vendored locally so the app works completely offline. -->
+<script src="vendor/zxing.min.js" defer></script>
+<script src="vendor/JsBarcode.all.min.js" defer></script>
+<script src="vendor/qrcode.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header__inner">
+    <div class="brand">
+      <svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="2"  y="4" width="2" height="16" rx=".5"/>
+        <rect x="5"  y="4" width="1" height="16" rx=".5"/>
+        <rect x="7"  y="4" width="3" height="16" rx=".5"/>
+        <rect x="11" y="4" width="1" height="16" rx=".5"/>
+        <rect x="13" y="4" width="2" height="16" rx=".5"/>
+        <rect x="16" y="4" width="1" height="16" rx=".5"/>
+        <rect x="18" y="4" width="3" height="16" rx=".5"/>
+      </svg>
+      <div>
+        <h1>Barcode Saver</h1>
+        <p class="brand__tagline">Turn a photo of a barcode into a clean, high-resolution barcode image.</p>
+      </div>
+    </div>
+    <p class="offline-badge" title="No uploads, no network requests, no tracking.">
+      <span class="dot" aria-hidden="true"></span> 100% offline &middot; nothing leaves your device
+    </p>
+  </div>
+</header>
+
+<noscript>
+  <p class="notice notice--warn">This app needs JavaScript. Everything runs locally in your browser.</p>
+</noscript>
+
+<main class="app-main">
+
+  <!-- ────────────────────── SAVED BARCODE LIBRARY ────────────────────────── -->
+  <section class="panel" id="library-panel" aria-labelledby="h-library">
+    <h2 class="panel__title" id="h-library">
+      Saved barcodes <span class="count" id="library-count"></span>
+    </h2>
+
+    <p class="hint" id="library-empty">
+      Nothing saved yet. Read a barcode, give it a name, then press <em>Save barcode</em> — saved
+      barcodes appear here and can be reopened at any time without the original photo.
+    </p>
+
+    <ul class="library" id="library-list"></ul>
+  </section>
+
+  <!-- Stands in for the photo picker while a saved barcode is open. -->
+  <div class="panel panel--compact" id="new-barcode-bar" hidden>
+    <p class="hint">You are viewing a saved barcode. Read a new one from a photo, screenshot or the camera.</p>
+    <button type="button" class="btn btn--primary" id="add-new-btn">Add a new barcode</button>
+  </div>
+
+  <!-- ───────────────────────────── STEP 1: INPUT ───────────────────────────── -->
+  <section class="panel" id="input-panel" aria-labelledby="h-input">
+    <h2 class="panel__title" id="h-input"><span class="step">1</span> Choose a photo</h2>
+
+    <div id="dropzone" class="dropzone" role="button" tabindex="0"
+         aria-describedby="dropzone-help">
+      <svg class="dropzone__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <p class="dropzone__title">Drop an image here, or click to browse</p>
+      <p class="dropzone__hint" id="dropzone-help">PNG, JPEG, WebP, HEIC, TIFF, GIF &middot; you can also paste with <kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>V</kbd></p>
+    </div>
+
+    <div class="btn-row">
+      <button type="button" class="btn" id="browse-btn">Browse files&hellip;</button>
+      <button type="button" class="btn" id="camera-btn">Use camera</button>
+    </div>
+
+    <!-- Programmatic proxies for the labelled buttons above; hidden from a11y tree
+         and tab order so they are not announced as an unlabelled "Choose File". -->
+    <input type="file" id="file-input"   accept="image/*" class="visually-hidden"
+           tabindex="-1" aria-hidden="true">
+    <input type="file" id="camera-input" accept="image/*" capture="environment"
+           class="visually-hidden" tabindex="-1" aria-hidden="true">
+
+    <p class="status" id="dropzone-status" role="status" aria-live="polite"></p>
+  </section>
+
+  <!-- ─────────────────────────── STEP 2: SOURCE ───────────────────────────── -->
+  <section class="panel" id="source-panel" aria-labelledby="h-source" hidden>
+    <h2 class="panel__title" id="h-source"><span class="step">2</span> Read the barcode</h2>
+
+    <div class="source-layout">
+      <div class="preview-col" id="preview-col">
+        <div class="preview-wrap" id="preview-wrap">
+          <canvas id="preview-canvas" class="preview-canvas" aria-label="Source image"></canvas>
+          <canvas id="region-canvas" class="region-canvas" aria-hidden="true"></canvas>
+        </div>
+      </div>
+
+      <div class="source-side">
+        <p class="meta" id="preview-meta"></p>
+        <p class="hint" id="region-hint">Drag a box around a single barcode to read it more reliably &mdash; helpful when the photo is busy or the code is small.</p>
+
+        <div class="btn-row">
+          <button type="button" class="btn btn--ghost" id="clear-region" disabled>Clear selection</button>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" id="deep-scan">
+          <span>Deep scan <small>(slower: tries rotation, upscaling and fine skew &mdash; use when a normal scan fails)</small></span>
+        </label>
+
+        <label class="check">
+          <input type="checkbox" id="rare-formats">
+          <span>Include rare formats <small>(RSS / GS1 DataBar, MaxiCode)</small></span>
+        </label>
+
+        <div class="btn-row">
+          <button type="button" class="btn btn--primary" id="decode-btn">Read barcode</button>
+        </div>
+
+        <div class="progress" id="progress" hidden>
+          <div class="progress__track"><div class="progress__bar" id="progress-bar"></div></div>
+          <p class="progress__text" id="progress-text" role="status" aria-live="polite"></p>
+        </div>
+
+        <p class="notice notice--warn" id="source-note" hidden></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── STEP 3: RESULTS ──────────────────────────── -->
+  <section class="panel" id="results-panel" aria-labelledby="h-results" hidden>
+    <h2 class="panel__title" id="h-results"><span class="step">3</span> Decoded result</h2>
+    <div id="results-body"></div>
+
+    <div class="btn-row">
+      <button type="button" class="btn" id="find-more-btn">Scan again for more barcodes</button>
+    </div>
+  </section>
+
+  <!-- ──────────────────────────── STEP 4: OUTPUT ──────────────────────────── -->
+  <section class="panel" id="output-panel" aria-labelledby="h-output" hidden>
+    <h2 class="panel__title" id="h-output">
+      <span class="step" id="output-step">4</span> <span id="output-title">Rebuild it clean</span>
+    </h2>
+
+    <div class="output-body">
+      <p class="notice notice--warn" id="format-notice" hidden></p>
+      <div class="output-layout" id="output-layout">
+
+        <div class="controls" id="output-controls">
+          <label class="field">
+            <span class="field__label">Data to encode</span>
+            <input type="text" id="data-input" spellcheck="false" autocomplete="off"
+                   placeholder="e.g. 5901234123457">
+            <span class="field__hint">Pre-filled from the decode. Edit it if a character was misread.</span>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Symbology</span>
+            <select id="format-select"></select>
+            <span class="field__hint" id="format-hint"></span>
+          </label>
+
+          <fieldset class="fieldset">
+            <legend>Geometry</legend>
+
+            <label class="field field--range">
+              <span class="field__label">Bar width <output id="out-module-width">6</output> px</span>
+              <input type="range" id="opt-module-width" min="1" max="16" step="1" value="6">
+              <span class="field__hint">Width of one narrow bar in the exported image. Bigger = sharper when printed.</span>
+            </label>
+
+            <label class="field field--range">
+              <span class="field__label">Bar height <output id="out-height">140</output> px</span>
+              <input type="range" id="opt-height" min="20" max="400" step="5" value="140">
+            </label>
+
+            <label class="field field--range">
+              <span class="field__label">Quiet zone <output id="out-quiet">10</output> modules</span>
+              <input type="range" id="opt-quiet" min="0" max="30" step="1" value="10">
+              <span class="field__hint">Blank margin around the code. Scanners need it &mdash; 10 is a safe default.</span>
+            </label>
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend>Text &amp; colour</legend>
+
+            <label class="check">
+              <input type="checkbox" id="opt-showtext" checked>
+              <span>Print the human-readable text under the bars</span>
+            </label>
+
+            <label class="field field--range" id="fontsize-field">
+              <span class="field__label">Text size <output id="out-fontsize">20</output> px</span>
+              <input type="range" id="opt-fontsize" min="8" max="60" step="1" value="20">
+            </label>
+
+            <div class="color-row">
+              <label class="field field--color">
+                <span class="field__label">Bars</span>
+                <input type="color" id="opt-line-color" value="#000000">
+              </label>
+              <label class="field field--color">
+                <span class="field__label">Background</span>
+                <input type="color" id="opt-bg-color" value="#ffffff">
+              </label>
+              <label class="check check--tight">
+                <input type="checkbox" id="opt-transparent">
+                <span>Transparent</span>
+              </label>
+            </div>
+
+          </fieldset>
+
+          <label class="field" id="ecc-field" hidden>
+            <span class="field__label">QR error correction</span>
+            <select id="opt-ecc">
+              <option value="L">L &mdash; 7% recovery</option>
+              <option value="M" selected>M &mdash; 15% recovery</option>
+              <option value="Q">Q &mdash; 25% recovery</option>
+              <option value="H">H &mdash; 30% recovery</option>
+            </select>
+          </label>
+
+          <fieldset class="fieldset">
+            <legend>Save in this browser</legend>
+
+            <label class="field">
+              <span class="field__label">Name</span>
+              <input type="text" id="save-name" maxlength="80" spellcheck="false"
+                     placeholder="e.g. Coffee jar &mdash; 250 g">
+            </label>
+
+            <p class="meta" id="save-mode">Not saved yet</p>
+
+            <div class="btn-row">
+              <button type="button" class="btn btn--primary" id="save-btn">Save barcode</button>
+              <button type="button" class="btn btn--ghost" id="save-new-btn" hidden>Save as new copy</button>
+            </div>
+
+            <p class="field__hint">Stored only on this device. The barcode is rebuilt from the saved
+              data every time it is opened, so it stays sharp at any size.</p>
+          </fieldset>
+        </div>
+
+        <div class="output-view">
+          <div class="render-frame" id="render-frame" tabindex="0" aria-label="Regenerated barcode preview"></div>
+          <p class="notice notice--warn" id="render-error" hidden></p>
+          <p class="notice" id="render-warning" hidden></p>
+          <p class="meta meta--strong" id="render-meta"></p>
+
+          <div class="btn-row">
+            <button type="button" class="btn btn--primary" id="download-png">Download PNG</button>
+            <button type="button" class="btn" id="download-svg">Download SVG</button>
+            <button type="button" class="btn" id="copy-image">Copy image</button>
+            <button type="button" class="btn btn--ghost" id="print-btn">Print</button>
+            <button type="button" class="btn btn--ghost" id="edit-saved-btn" hidden>Edit</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <p>
+    Runs entirely on this device &mdash; no server, no uploads, no analytics.
+    Photo decoding by <a href="https://github.com/zxing-js/library" rel="noopener noreferrer">ZXing-js</a> (Apache-2.0),
+    barcode generation by <a href="https://github.com/lindell/JsBarcode" rel="noopener noreferrer">JsBarcode</a> and
+    <a href="https://github.com/kazuhikoarase/qrcode-generator" rel="noopener noreferrer">qrcode-generator</a> (both MIT).
+  </p>
+</footer>
+
+<div id="print-area" aria-hidden="true"></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+</body>
+</html>
