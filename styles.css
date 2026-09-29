@@ -199,6 +199,37 @@ kbd {
   margin-bottom: 16px;
 }
 
+/* Collapsible panel heading: the whole row is the toggle. */
+.panel__toggle {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.panel__toggle:hover #output-title { text-decoration: underline; }
+
+.chevron {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform .18s ease-out;
+}
+
+.panel__toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
 .step {
   display: grid;
   place-items: center;
@@ -344,7 +375,6 @@ kbd {
 .preview-col { min-width: 0; }
 
 .preview-wrap {
-  position: relative;
   display: block;
   width: fit-content;
   max-width: 100%;
@@ -360,20 +390,11 @@ kbd {
     var(--surface);
 }
 
-/* Sized in JS so the aspect ratio is exact and the region overlay lines up. */
+/* Sized in JS so the aspect ratio is exact. */
 .preview-canvas {
   display: block;
   width: 100%;
   height: auto;
-}
-
-.region-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  cursor: crosshair;
-  touch-action: none;
 }
 
 .source-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -488,24 +509,24 @@ kbd {
 
 /* ─────────────────────────────── output ───────────────────────────── */
 
-.output-layout {
+/* The barcode preview lives in the save panel now, so the options stand alone. */
+.output-layout { display: block; }
+
+.controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
   align-items: start;
+  min-width: 0;
 }
 
-/* Read-only view of a saved barcode: the options column is hidden, so let the
-   symbol have the whole width. */
-.output-layout.is-view-only { grid-template-columns: minmax(0, 1fr); }
+/* Single fields read badly squeezed into half a row, so they span the width;
+   the two fieldsets pair up side by side. */
+.controls > .field { grid-column: 1 / -1; }
 
-@media (max-width: 860px) {
-  .output-layout { grid-template-columns: 1fr; }
+@media (max-width: 760px) {
+  .controls { grid-template-columns: minmax(0, 1fr); }
 }
-
-.controls { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-
-.output-view { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
 .fieldset {
   display: grid;
@@ -608,6 +629,27 @@ input[type="color"] {
 }
 
 .render-frame svg, .render-frame canvas { max-width: 100%; height: auto; display: block; }
+
+/* ──────────────────────────── save panel ──────────────────────────── */
+
+/* The symbol and the name-it/save controls sit side by side on wide screens. */
+.save-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 14px;
+}
+
+@media (max-width: 760px) {
+  .save-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+.save-preview { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+.save-form { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.save-form .btn-row { margin-top: 0; }
 
 /* ────────────────────────── saved barcode library ─────────────────── */
 

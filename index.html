@@ -114,17 +114,11 @@
       <div class="preview-col" id="preview-col">
         <div class="preview-wrap" id="preview-wrap">
           <canvas id="preview-canvas" class="preview-canvas" aria-label="Source image"></canvas>
-          <canvas id="region-canvas" class="region-canvas" aria-hidden="true"></canvas>
         </div>
       </div>
 
       <div class="source-side">
         <p class="meta" id="preview-meta"></p>
-        <p class="hint" id="region-hint">Drag a box around a single barcode to read it more reliably &mdash; helpful when the photo is busy or the code is small.</p>
-
-        <div class="btn-row">
-          <button type="button" class="btn btn--ghost" id="clear-region" disabled>Clear selection</button>
-        </div>
 
         <label class="check">
           <input type="checkbox" id="deep-scan">
@@ -163,10 +157,18 @@
   <!-- ──────────────────────────── STEP 4: OUTPUT ──────────────────────────── -->
   <section class="panel" id="output-panel" aria-labelledby="h-output" hidden>
     <h2 class="panel__title" id="h-output">
-      <span class="step" id="output-step">4</span> <span id="output-title">Rebuild it clean</span>
+      <button type="button" class="panel__toggle" id="output-toggle"
+              aria-expanded="false" aria-controls="output-body">
+        <span class="step" id="output-step">4</span>
+        <span id="output-title">Advanced options</span>
+        <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M4 6.5 8 10.5l4-4" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </h2>
 
-    <div class="output-body">
+    <div class="output-body" id="output-body" hidden>
       <p class="notice notice--warn" id="format-notice" hidden></p>
       <div class="output-layout" id="output-layout">
 
@@ -244,43 +246,49 @@
               <option value="H">H &mdash; 30% recovery</option>
             </select>
           </label>
-
-          <fieldset class="fieldset">
-            <legend>Save in this browser</legend>
-
-            <label class="field">
-              <span class="field__label">Name</span>
-              <input type="text" id="save-name" maxlength="80" spellcheck="false"
-                     placeholder="e.g. Coffee jar &mdash; 250 g">
-            </label>
-
-            <p class="meta" id="save-mode">Not saved yet</p>
-
-            <div class="btn-row">
-              <button type="button" class="btn btn--primary" id="save-btn">Save barcode</button>
-              <button type="button" class="btn btn--ghost" id="save-new-btn" hidden>Save as new copy</button>
-            </div>
-
-            <p class="field__hint">Stored only on this device. The barcode is rebuilt from the saved
-              data every time it is opened, so it stays sharp at any size.</p>
-          </fieldset>
-        </div>
-
-        <div class="output-view">
-          <div class="render-frame" id="render-frame" tabindex="0" aria-label="Regenerated barcode preview"></div>
-          <p class="notice notice--warn" id="render-error" hidden></p>
-          <p class="notice" id="render-warning" hidden></p>
-          <p class="meta meta--strong" id="render-meta"></p>
-
-          <div class="btn-row">
-            <button type="button" class="btn btn--primary" id="download-png">Download PNG</button>
-            <button type="button" class="btn" id="download-svg">Download SVG</button>
-            <button type="button" class="btn" id="copy-image">Copy image</button>
-            <button type="button" class="btn btn--ghost" id="print-btn">Print</button>
-            <button type="button" class="btn btn--ghost" id="edit-saved-btn" hidden>Edit</button>
-          </div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- The barcode itself lives here, not behind the "Advanced options" toggle:
+       seeing, naming, saving and downloading are all one step. -->
+  <section class="panel" id="save-panel" aria-labelledby="h-save" hidden>
+    <h2 class="panel__title" id="h-save"><span class="step">5</span> Save in this browser</h2>
+
+    <div class="save-layout">
+      <div class="save-preview">
+        <div class="render-frame" id="render-frame" tabindex="0" aria-label="Barcode preview"></div>
+        <p class="notice notice--warn" id="render-error" hidden></p>
+        <p class="notice" id="render-warning" hidden></p>
+        <p class="meta meta--strong" id="render-meta"></p>
+      </div>
+
+      <div class="save-form">
+        <p class="meta" id="save-mode">Not saved yet</p>
+
+        <label class="field">
+          <span class="field__label">Name</span>
+          <input type="text" id="save-name" maxlength="80" spellcheck="false"
+                 placeholder="e.g. Coffee jar &mdash; 250 g">
+        </label>
+
+        <div class="btn-row">
+          <button type="button" class="btn btn--primary" id="save-btn">Save barcode</button>
+          <button type="button" class="btn btn--ghost" id="save-new-btn" hidden>Save as new copy</button>
+        </div>
+
+        <p class="field__hint">Stored only on this device. The barcode is rebuilt from the saved
+          data every time it is opened, so it stays sharp at any size.</p>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="button" class="btn btn--primary" id="download-png">Download PNG</button>
+      <button type="button" class="btn" id="download-svg">Download SVG</button>
+      <button type="button" class="btn" id="copy-image">Copy image</button>
+      <button type="button" class="btn btn--ghost" id="print-btn">Print</button>
+      <button type="button" class="btn btn--ghost" id="edit-saved-btn" hidden>Edit</button>
     </div>
   </section>
 

@@ -12,7 +12,7 @@
      2.  Symbology tables
      3.  State
      4.  Source loading (file / clipboard / camera)
-     5.  Preview sizing + region selection
+     5.  Preview sizing
      6.  Greyscale maths and image transforms
      7.  Decode pipeline
      8.  Results rendering
@@ -192,13 +192,13 @@ const state = {
   sourceInfo: null,
   /** @type {{gray: Uint8ClampedArray, width: number, height: number}|null} */
   baseGray: null,
-  /** user-drawn region in working-canvas coordinates */
-  region: null,
   /** @type {Array} decode hits, best first */
   results: [],
   selected: 0,
   /** @type {object|null} last successful render, for exports */
   render: null,
+  /** whether a symbol is on screen — drives the save + options panels */
+  hasSymbol: false,
   /** @type {'scan'|'viewing'|'editing'} which view the page is showing */
   mode: 'scan',
   decodeToken: 0,
@@ -252,20 +252,22 @@ function setSourceFromDrawable(drawable, name) {
   state.sourceName = name || 'image';
   state.sourceInfo = { originalW: nw, originalH: nh, w, h, downscaled: scale < 1 };
   state.baseGray = null;
-  state.region = null;
   state.results = [];
   state.selected = 0;
 
-  clearRegion(false);
+  // A new photo replaces everything, including a scan still running on the
+  // previous one: bumping the token makes that loop bail out at its next step.
+  state.decodeToken++;
+  state.busy = false;
+
   fitPreview();
-  syncRegionCanvas();
 
   const pct = Math.round(scale * 100);
   const noteEl = $('#source-note');
   if (scale < 1) {
     noteEl.textContent =
       `Large photo downscaled to ${pct}% (${w}\u00d7${h} px) so scanning stays responsive. ` +
-      'If the code is tiny in the frame, select just that area and scan again.';
+      'If a tiny code is missed, crop the photo around it and load that instead.';
     noteEl.hidden = false;
   } else {
     noteEl.hidden = true;
@@ -277,7 +279,7 @@ function setSourceFromDrawable(drawable, name) {
 
   $('#source-panel').hidden = false;
   $('#results-panel').hidden = true;
-  $('#output-panel').hidden = true;
+  setOutputVisible(false);
 
   $('#preview-meta').textContent =
     `${state.sourceName} \u00b7 ${nw}\u00d7${nh} px` + (scale < 1 ? ` \u2192 working at ${w}\u00d7${h} px` : '');
@@ -296,7 +298,8 @@ async function loadFile(file) {
     setSourceFromDrawable(bitmap, file.name);
     if (bitmap.close) bitmap.close();
     $('#dropzone-status').textContent = '';
-    toast('Photo loaded — press “Read barcode”.');
+    // No press needed — loading a photo is itself the request to read it.
+    startRead();
   } catch (err) {
     $('#dropzone-status').textContent = '';
     toast(err.message || 'Could not load that image.');
@@ -304,7 +307,7 @@ async function loadFile(file) {
 }
 
 /* =============================================================================
-   5. Preview sizing + region selection
+   5. Preview sizing
    ========================================================================== */
 
 function fitPreview() {
@@ -316,115 +319,6 @@ function fitPreview() {
   const scale = Math.min(avail / src.width, maxH / src.height, 1);
   src.style.width = `${Math.round(src.width * scale)}px`;
   src.style.height = `${Math.round(src.height * scale)}px`;
-}
-
-/** Keep the overlay's backing store equal to its on-screen size. */
-function syncRegionCanvas() {
-  const overlay = $('#region-canvas');
-  const wrap = $('#preview-wrap');
-  const w = Math.max(1, Math.round(wrap.clientWidth));
-  const h = Math.max(1, Math.round(wrap.clientHeight));
-  if (overlay.width !== w || overlay.height !== h) {
-    overlay.width = w;
-    overlay.height = h;
-  }
-  drawRegionOverlay();
-}
-
-function drawRegionOverlay() {
-  const overlay = $('#region-canvas');
-  const ctx = overlay.getContext('2d');
-  ctx.clearRect(0, 0, overlay.width, overlay.height);
-  if (!state.region || !state.source) return;
-
-  const k = overlay.width / state.source.width;
-  const x = state.region.x * k;
-  const y = state.region.y * k;
-  const w = state.region.w * k;
-  const h = state.region.h * k;
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(47, 92, 255, 0.16)';
-  ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = '#2f5cff';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([7, 5]);
-  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-  ctx.setLineDash([]);
-  ctx.restore();
-}
-
-function clearRegion(redraw) {
-  state.region = null;
-  $('#clear-region').disabled = true;
-  if (redraw !== false) drawRegionOverlay();
-}
-
-function initRegionSelection() {
-  const overlay = $('#region-canvas');
-  let dragging = false;
-  let start = null;
-
-  const toImage = (ev) => {
-    const rect = overlay.getBoundingClientRect();
-    const k = state.source ? state.source.width / rect.width : 1;
-    return {
-      x: clamp((ev.clientX - rect.left) * k, 0, state.source.width),
-      y: clamp((ev.clientY - rect.top) * k, 0, state.source.height),
-    };
-  };
-
-  overlay.addEventListener('pointerdown', (ev) => {
-    if (!state.source) return;
-    overlay.setPointerCapture(ev.pointerId);
-    dragging = true;
-    start = toImage(ev);
-    state.region = { x: start.x, y: start.y, w: 1, h: 1 };
-    drawRegionOverlay();
-    ev.preventDefault();
-  });
-
-  overlay.addEventListener('pointermove', (ev) => {
-    if (!dragging) return;
-    const p = toImage(ev);
-    state.region = {
-      x: Math.min(start.x, p.x),
-      y: Math.min(start.y, p.y),
-      w: Math.abs(p.x - start.x),
-      h: Math.abs(p.y - start.y),
-    };
-    drawRegionOverlay();
-  });
-
-  const finish = (ev) => {
-    if (!dragging) return;
-    dragging = false;
-    if (ev && overlay.hasPointerCapture && overlay.hasPointerCapture(ev.pointerId)) {
-      overlay.releasePointerCapture(ev.pointerId);
-    }
-    const r = state.region;
-    // Ignore accidental taps: require a real box.
-    if (!r || r.w < 12 || r.h < 12) {
-      clearRegion();
-      toast('Selection too small — drag a box around the whole barcode.');
-      return;
-    }
-    state.region = {
-      x: Math.round(r.x), y: Math.round(r.y),
-      w: Math.round(r.w), h: Math.round(r.h),
-    };
-    $('#clear-region').disabled = false;
-    drawRegionOverlay();
-    toast(`Selection: ${state.region.w}\u00d7${state.region.h} px — now press “Read barcode”.`);
-  };
-
-  overlay.addEventListener('pointerup', finish);
-  overlay.addEventListener('pointercancel', finish);
-
-  $('#clear-region').addEventListener('click', () => {
-    clearRegion();
-    toast('Selection cleared.');
-  });
 }
 
 /* =============================================================================
@@ -756,11 +650,7 @@ async function runDecode(mode) {
 
   const hints = buildHints();
   const deep = mode === 'deep';
-  const view = state.region
-    ? state.region
-    : { x: 0, y: 0, w: state.source.width, h: state.source.height };
-  const viewIsFull = view.x === 0 && view.y === 0
-    && view.w === state.source.width && view.h === state.source.height;
+  const view = { x: 0, y: 0, w: state.source.width, h: state.source.height };
 
   const tiers = planTiers(deep ? 'deep' : mode === 'more' ? 'more' : 'normal', view);
   const total = tiers.reduce((n, t) => n + t.attempts.length, 0);
@@ -807,17 +697,32 @@ async function runDecode(mode) {
   }
 
   const ms = Math.round(performance.now() - started);
-  state.results = rankResults(found, viewIsFull);
+  state.results = rankResults(found);
   state.selected = 0;
   renderResults(ms, mode);
 }
 
 /**
- * Score hits so the most trustworthy one is first:
- * a plausible symbology, found in the plain reading, is better than a lucky
- * tile hit.
+ * Single entry point for starting a read: used by the buttons and by the
+ * automatic read that follows loading a photo. Picks the mode from the Deep
+ * scan toggle unless one is given, and guarantees the busy state is released
+ * even if something unexpected throws.
  */
-function rankResults(hits, viewIsFull) {
+function startRead(mode) {
+  if (!state.source || state.busy) return;
+  const chosen = mode || ($('#deep-scan').checked ? 'deep' : 'normal');
+  runDecode(chosen).catch(() => {
+    state.busy = false;
+    setBusy(false);
+    hideProgress();
+  });
+}
+
+/**
+ * Score hits so the most trustworthy one is first: a plausible symbology, found
+ * in the plain reading, is better than a lucky tile hit.
+ */
+function rankResults(hits) {
   const scored = hits.map((hit, index) => {
     let score = 0;
     const sym = SYMBOLOGIES[hit.formatName] || null;
@@ -857,12 +762,11 @@ function renderResults(ms, mode) {
     n.className = 'notice notice--warn';
     n.innerHTML =
       '<strong>No barcode found.</strong> Things that usually help, in order:<br>' +
-      '1. Drag a tight box around the barcode, then press <em>Read barcode</em> again.<br>' +
+      '1. Crop the photo tightly around the barcode, then load that instead.<br>' +
       '2. Tick <em>Deep scan</em> — it retries with rotation, upscaling and fine skew correction.<br>' +
-      '3. Crop the photo so the barcode fills more of the frame, then reload it.<br>' +
-      '4. Avoid glare, shadows across the bars, and heavy motion blur.';
+      '3. Try a sharper shot: avoid glare, shadows across the bars, and motion blur.';
     body.appendChild(n);
-    $('#output-panel').hidden = true;
+    setOutputVisible(false);
     $('#find-more-btn').hidden = !state.source;
     return;
   }
@@ -962,7 +866,7 @@ function selectResult(index, silent) {
   const hit = state.results[index];
   if (!hit) return;
 
-  $('#output-panel').hidden = false;
+  setOutputVisible(true);
   setMode('scan');
   $('#data-input').value = hit.text;
 
@@ -1531,7 +1435,7 @@ function openSaved(id) {
   syncReadouts();
   syncControlVisibility();
 
-  $('#output-panel').hidden = false;
+  setOutputVisible(true);
   renderBarcode();
   highlightLibrary();
   syncSaveControls();
@@ -1718,6 +1622,7 @@ const VIEW_MODES = ['scan', 'viewing', 'editing'];
 function leadWithOutputPanel(lead) {
   const main = $('.app-main');
   const output = $('#output-panel');
+  const save = $('#save-panel');
   const bar = $('#new-barcode-bar');
   const input = $('#input-panel');
   const results = $('#results-panel');
@@ -1732,9 +1637,46 @@ function leadWithOutputPanel(lead) {
     if (results.nextElementSibling !== output) results.after(output);
     if (bar.nextElementSibling !== input) main.insertBefore(bar, input);
   }
+
+  // The save block always sits directly under the barcode it applies to.
+  if (output.nextElementSibling !== save) output.after(save);
+}
+
+/**
+ * Show or hide the symbol-facing panels.
+ *
+ *   save-panel    whenever a symbol is on screen — the barcode, its exports and
+ *                 the name/save controls all live there now.
+ *   output-panel  the same, except in the read-only saved view: its controls are
+ *                 unavailable there, so the panel would be an empty shell.
+ *                 Pressing Edit brings it back.
+ */
+function setOutputVisible(on) {
+  state.hasSymbol = !!on;
+  syncOutputPanels();
+}
+
+function syncOutputPanels() {
+  const show = state.hasSymbol;
+  $('#save-panel').hidden = !show;
+  $('#output-panel').hidden = !(show && state.mode !== 'viewing');
+}
+
+/**
+ * Open or close the advanced options panel. Collapsed by default so the page
+ * stays short; a saved barcode forces it open because the symbol *is* the
+ * content in that view.
+ */
+function setOutputExpanded(on) {
+  const body = $('#output-body');
+  const toggle = $('#output-toggle');
+  if (!body || !toggle) return;
+  body.hidden = !on;
+  toggle.setAttribute('aria-expanded', String(on));
 }
 
 function setMode(mode) {
+  const previous = state.mode;
   state.mode = VIEW_MODES.indexOf(mode) === -1 ? 'scan' : mode;
   const saved = state.mode !== 'scan';
 
@@ -1746,10 +1688,8 @@ function setMode(mode) {
   $('#new-barcode-bar').hidden = !saved;
 
   // The rebuild options are for editing; a saved barcode is read-only by
-  // default, with an explicit Edit button to bring them back.
-  const showOptions = state.mode !== 'viewing';
-  $('#output-controls').hidden = !showOptions;
-  $('#output-layout').classList.toggle('is-view-only', !showOptions);
+  // default, with an explicit Edit button to bring them back. The panel itself
+  // is hidden in that view — see syncOutputPanels().
   $('#edit-saved-btn').hidden = state.mode !== 'viewing';
 
   // The decode panels belong to the scanning flow only.
@@ -1766,7 +1706,15 @@ function setMode(mode) {
     ? library.items.find((i) => i.id === library.editingId)
     : null;
   $('#output-step').hidden = saved;
-  $('#output-title').textContent = saved && record ? record.name : 'Rebuild it clean';
+  $('#output-title').textContent = saved && record ? record.name : 'Advanced options';
+
+  // Only react to real mode changes, so a user who opened the panel keeps it
+  // open while re-reading or picking a different result.
+  if (state.mode !== previous) setOutputExpanded(saved);
+
+  // Entering or leaving the read-only saved view changes whether the options
+  // panel is wanted at all.
+  syncOutputPanels();
 }
 
 /** Leave a saved barcode behind and go back to reading a new one. */
@@ -1779,8 +1727,8 @@ function startNewBarcode() {
 
   setMode('scan');
 
-  // Only worth showing the output panel if something is already decoded.
-  $('#output-panel').hidden = state.results.length === 0;
+  // Only worth showing the output if something is already decoded.
+  setOutputVisible(state.results.length > 0);
 
   const target = state.source ? $('#source-panel') : $('#input-panel');
   target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1942,8 +1890,8 @@ function wireEvents() {
   });
 
   /* --- decode --- */
-  $('#decode-btn').addEventListener('click', () => runDecode($('#deep-scan').checked ? 'deep' : 'normal'));
-  $('#find-more-btn').addEventListener('click', () => runDecode('more'));
+  $('#decode-btn').addEventListener('click', () => startRead());
+  $('#find-more-btn').addEventListener('click', () => startRead('more'));
 
   /* --- output controls --- */
   const regenerating = ['#opt-module-width', '#opt-height', '#opt-quiet', '#opt-showtext',
@@ -1995,14 +1943,14 @@ function wireEvents() {
   });
 
   /* --- view modes --- */
+  $('#output-toggle').addEventListener('click', () => {
+    setOutputExpanded($('#output-body').hidden);
+  });
   $('#add-new-btn').addEventListener('click', startNewBarcode);
   $('#edit-saved-btn').addEventListener('click', () => setMode('editing'));
 
   /* --- viewport --- */
-  const onResize = () => {
-    fitPreview();
-    syncRegionCanvas();
-  };
+  const onResize = () => fitPreview();
   window.addEventListener('resize', onResize);
   if (typeof ResizeObserver === 'function') {
     const ro = new ResizeObserver(onResize);
@@ -2028,7 +1976,7 @@ function refreshView() {
   loadLibrary();
   renderLibrary();
   syncSaveControls();
-  if (!$('#output-panel').hidden) renderBarcode();
+  if (!$('#save-panel').hidden) renderBarcode();
 
   const n = library.items.length;
   toast(n
@@ -2169,7 +2117,6 @@ function init() {
   // The saved list is the landing view, with the photo picker below it.
   setMode('scan');
 
-  initRegionSelection();
   wireEvents();
   initPullToRefresh();
 
