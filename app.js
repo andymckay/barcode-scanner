@@ -1723,15 +1723,14 @@ function leadWithOutputPanel(lead) {
   const results = $('#results-panel');
 
   if (lead) {
-    // barcode -> add-new bar -> saved list -> …
-    if (main.children[0] === output && main.children[1] === bar) return;
-    main.insertBefore(bar, main.firstElementChild);
-    main.insertBefore(output, main.firstElementChild);
+    // The barcode leads the page and the add-new button drops to the bottom,
+    // so the saved list reads as the main content of the page.
+    if (main.firstElementChild !== output) main.insertBefore(output, main.firstElementChild);
+    if (main.lastElementChild !== bar) main.appendChild(bar);
   } else {
     // … saved list -> add-new bar -> photo picker -> … -> results -> barcode
-    if (results.nextElementSibling === output && bar.nextElementSibling === input) return;
-    results.after(output);
-    main.insertBefore(bar, input);
+    if (results.nextElementSibling !== output) results.after(output);
+    if (bar.nextElementSibling !== input) main.insertBefore(bar, input);
   }
 }
 

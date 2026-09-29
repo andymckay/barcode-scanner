@@ -22,6 +22,10 @@
   --ok-soft: #e9f8ef;
   --radius: 14px;
   --radius-sm: 9px;
+  /* Page and panel gutters. Kept as variables so the barcode can escape them on
+     small screens without hard-coding the arithmetic in two places. */
+  --app-pad: 24px;
+  --panel-pad: 22px;
   --shadow: 0 1px 2px rgba(19, 26, 43, .06), 0 8px 24px -12px rgba(19, 26, 43, .18);
   --shadow-sm: 0 1px 2px rgba(19, 26, 43, .07);
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -105,7 +109,7 @@ kbd {
 .app-header__inner {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 18px 24px;
+  padding: 18px var(--app-pad);
   display: flex;
   flex-wrap: wrap;
   gap: 12px 20px;
@@ -151,7 +155,7 @@ kbd {
 .app-main {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 24px;
+  padding: var(--app-pad);
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -160,7 +164,7 @@ kbd {
 .app-footer {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 8px 24px 40px;
+  padding: 8px var(--app-pad) 40px;
   font-size: 12.5px;
   color: var(--text-muted);
 }
@@ -170,7 +174,7 @@ kbd {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 22px;
+  padding: var(--panel-pad);
 }
 
 /* Compact bar layout, used for "add a new barcode". */
@@ -724,6 +728,34 @@ input[type="color"] {
 }
 
 /* ─────────────────────────────── print ────────────────────────────── */
+
+/* ─────────────────────────────── mobile ───────────────────────────── */
+
+/* Shrinking the gutters gives every panel a bit more room on a phone, and
+   then the barcode breaks out of the panel entirely — a dense linear symbol
+   needs every pixel, and a phone screen has none to spare. */
+@media (max-width: 700px) {
+  :root {
+    --app-pad: 10px;
+    --panel-pad: 15px;
+  }
+
+  .render-frame {
+    /* Cancels the app gutter, the panel's 1px border and the panel gutter,
+       which lands the frame exactly on the app-main border box (i.e. the full
+       width of the layout), so this can never cause horizontal overflow. */
+    margin-inline: calc(-1 * (var(--app-pad) + var(--panel-pad) + 1px));
+    padding: 12px 8px;
+    border-inline: 0;
+    border-radius: 0;
+    min-height: 150px;
+  }
+
+  /* The preview is always SVG, so it scales losslessly. Without this it would
+     stop at the symbol's natural pixel width (the inline max-width), which on a
+     phone can leave a wide barcode or QR code much narrower than the screen. */
+  .render-frame > svg { max-width: 100% !important; }
+}
 
 #print-area { display: none; }
 
