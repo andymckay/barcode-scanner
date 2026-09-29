@@ -1132,6 +1132,8 @@ function renderBarcode() {
     $('#render-meta').textContent = '';
     $('#render-warning').hidden = true;
     state.render = null;
+    // Nothing to show full screen any more, so hand the interface back.
+    syncFullscreenSymbol();
     return;
   }
 
@@ -1148,6 +1150,8 @@ function renderBarcode() {
   }
 
   updateRenderMeta(rendered);
+  // A fresh symbol means the full-screen copy (if one is on screen) is stale.
+  syncFullscreenSymbol();
 }
 
 /**
@@ -1660,6 +1664,9 @@ function syncOutputPanels() {
   const show = state.hasSymbol;
   $('#save-panel').hidden = !show;
   $('#output-panel').hidden = !(show && state.mode !== 'viewing');
+  // The full-screen view is an alternative presentation of the symbol, so it
+  // follows the same on/off switch.
+  syncFullscreenSymbol();
 }
 
 /**
@@ -2084,6 +2091,81 @@ function initPullToRefresh() {
   window.addEventListener('touchcancel', () => { if (dragging) reset(); }, { passive: true });
 }
 
+/* --- landscape full-screen symbol (touch) ---------------------------------- */
+
+/**
+ * On a phone, turning it on its side shows the barcode and nothing else: it is
+ * the thing being held up to a scanner, and the rest of the interface only
+ * steals room and gives the hand something to knock. Turning it back to
+ * portrait restores the interface exactly as it was.
+ *
+ * The symbol is mirrored into its own fixed layer rather than moved out of the
+ * preview frame, so the frame is never disturbed and coming back is a matter of
+ * hiding the layer again. The `pointer: coarse` test is what stops a wide
+ * desktop window from blanking the page.
+ */
+function isTouchDevice() {
+  // The primary pointer being coarse is the one signal that means "phone or
+  // tablet". navigator.maxTouchPoints is deliberately NOT used as a fallback:
+  // it is also non-zero on a touchscreen laptop, which would blank the page on
+  // every landscape window.
+  return typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+}
+
+/** Should the symbol be on screen by itself right now? */
+function wantsFullscreenSymbol() {
+  return isTouchDevice()
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(orientation: landscape)').matches
+    && state.hasSymbol
+    && !!state.render;
+}
+
+/** Show or hide the full-screen symbol to match the current state. */
+function syncFullscreenSymbol() {
+  const layer = $('#fullscreen-symbol');
+  if (!layer) return;
+
+  if (!wantsFullscreenSymbol()) {
+    if (!layer.hidden) {
+      layer.textContent = '';
+      layer.hidden = true;
+      layer.removeAttribute('aria-label');
+      document.body.classList.remove('is-symbol-fullscreen');
+    }
+    return;
+  }
+
+  const svg = svgForDisplay(state.render.svg);
+  if (!svg) return;
+
+  // Rebuilt from the render state rather than moved out of the preview frame,
+  // so the frame still has its copy when portrait comes back.
+  layer.textContent = '';
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+  layer.appendChild(svg);
+  layer.setAttribute('aria-label', `${state.render.entry.label} barcode`);
+  layer.hidden = false;
+  document.body.classList.add('is-symbol-fullscreen');
+}
+
+function initFullscreenSymbol() {
+  if (typeof window.matchMedia !== 'function') return;
+
+  const landscape = window.matchMedia('(orientation: landscape)');
+  const onChange = () => syncFullscreenSymbol();
+
+  if (landscape.addEventListener) landscape.addEventListener('change', onChange);
+  else if (landscape.addListener) landscape.addListener(onChange);
+
+  // Rotation also arrives as an ordinary resize, which covers browsers that fire
+  // it before the layout has settled (and desktop windows being resized).
+  window.addEventListener('resize', onChange);
+  window.addEventListener('orientationchange', onChange);
+}
+
 function checkLibraries() {
   const missing = [];
   if (!LIB.zxing) missing.push('vendor/zxing.min.js');
@@ -2119,6 +2201,7 @@ function init() {
 
   wireEvents();
   initPullToRefresh();
+  initFullscreenSymbol();
 
   const n = library.items.length;
   $('#dropzone-status').textContent = n

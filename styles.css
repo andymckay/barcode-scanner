@@ -867,6 +867,37 @@ body.ptr-drag .app-main { transition: none; }
   .render-frame > svg { max-width: 100% !important; }
 }
 
+/* ──────────────────── landscape full-screen symbol ────────────────── */
+
+/* A phone turned sideways shows the symbol on its own: it is the thing being
+   held up to a scanner, so everything else on the page is just clutter and
+   something to bump. The class is only ever applied on a touch device with a
+   symbol on screen — see syncFullscreenSymbol() in app.js. */
+body.is-symbol-fullscreen { overflow: hidden; }
+
+body.is-symbol-fullscreen .app-header,
+body.is-symbol-fullscreen .app-main,
+body.is-symbol-fullscreen .app-footer,
+body.is-symbol-fullscreen .ptr { display: none; }
+
+.fullscreen-symbol {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  /* Keeps the bars clear of the notch / camera cutout, which sits on a side
+     edge once the phone is on its side. */
+  padding: max(4px, env(safe-area-inset-top)) max(4px, env(safe-area-inset-right))
+           max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
+  /* Same white as .render-frame: a symbol needs a light background to be
+     legible, whatever the page theme is doing. */
+  background: #fff;
+}
+
+/* The symbol keeps its aspect ratio and grows to the largest size that fits. */
+.fullscreen-symbol > svg { display: block; width: 100%; height: 100%; }
+
 #print-area { display: none; }
 
 @media print {
