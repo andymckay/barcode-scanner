@@ -1,7 +1,7 @@
-# Barcode Restorer
+# Barcode
 
-A single-page, client-side app: drop in a photo of a barcode, it reads the code, then rebuilds a
-clean, high-resolution barcode image you can download as SVG or PNG. Name a result and it is kept
-in a local library, so you can reopen it later without the photo.
+A single-page, client-side app, scan in a barcode and then store it in the app. The barcode will be shown clearly (and full screen in landscape mode) so that you can use it easily at a scanner. Saves carrying around cards, or pictures of barcodes that are blurry or messy and don't scan easily.
 
-No build step, no server, no uploads. Everything runs in the browser tab.
+https://andymckay.github.io/barcode-scanner/
+
+<img width="487" height="901" alt="Screenshot 2026-09-29 at 2 16 16 PM" src="https://github.com/user-attachments/assets/8154a1eb-4e32-4dc0-b6f0-1bc0dd900bca" />
