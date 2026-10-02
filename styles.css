@@ -719,7 +719,7 @@ input[type="color"] {
 .library-item__name {
   appearance: none;
   font: inherit;
-  font-size: 14px;
+  font-size: 1.5em;
   font-weight: 650;
   color: var(--text);
   background: none;

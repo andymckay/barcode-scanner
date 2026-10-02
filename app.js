@@ -1514,11 +1514,6 @@ function libraryRow(rec) {
   nameBtn.addEventListener('click', (ev) => { ev.stopPropagation(); openSaved(rec.id); });
   head.appendChild(nameBtn);
 
-  const badge = document.createElement('span');
-  badge.className = 'badge';
-  badge.textContent = entry ? entry.label : rec.format;
-  head.appendChild(badge);
-
   // Show where the data originally came from, but not when that is the same
   // symbology we are already displaying.
   const decoded = rec.decodedFormat ? SYMBOLOGIES[rec.decodedFormat] : null;
@@ -1529,16 +1524,11 @@ function libraryRow(rec) {
     head.appendChild(from);
   }
 
-  const payload = document.createElement('div');
-  payload.className = 'payload';
-  payload.textContent = rec.text.length > 180 ? `${rec.text.slice(0, 180)}…` : rec.text;
-
   const meta = document.createElement('span');
   meta.className = 'meta';
   meta.textContent = `saved ${formatSavedAt(rec.updatedAt)}`;
 
   body.appendChild(head);
-  body.appendChild(payload);
   body.appendChild(meta);
 
   const actions = document.createElement('div');
