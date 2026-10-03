@@ -199,6 +199,17 @@ kbd {
   margin-bottom: 16px;
 }
 
+/* While a saved barcode is open, its name is headed at the same size it has in
+   the saved list: both are 1.5em of the 15px body font. */
+#save-panel.is-saved #h-save { font-size: 1.5em; }
+
+/* Secondary line under a panel heading (e.g. the saved-barcode view hint). */
+.panel__subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: -10px 0 16px;
+}
+
 /* Collapsible panel heading: the whole row is the toggle. */
 .panel__toggle {
   appearance: none;
@@ -217,7 +228,7 @@ kbd {
   cursor: pointer;
 }
 
-.panel__toggle:hover #output-title { text-decoration: underline; }
+.panel__toggle:hover .panel__toggle-label { text-decoration: underline; }
 
 .chevron {
   width: 16px;
@@ -356,6 +367,22 @@ kbd {
 
 .btn--ghost { background: transparent; border-color: var(--border); color: var(--text-muted); }
 .btn--ghost:hover:not(:disabled) { color: var(--text); }
+
+/* Green action button (e.g. "Save barcode"). */
+.btn--ok {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+.btn--ok:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ok) 85%, black);
+  border-color: color-mix(in srgb, var(--ok) 85%, black);
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn--ok { color: #10151f; }
+  .btn--ok:hover:not(:disabled) { color: #10151f; }
+}
 
 /* ─────────────────────────── source / preview ─────────────────────── */
 
@@ -684,9 +711,9 @@ input[type="color"] {
 .library-item:hover { border-color: var(--border-strong); }
 
 .library-item.is-active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  box-shadow: inset 0 0 0 1px var(--ok);
 }
 
 /* A fixed box plus preserveAspectRatio="meet" means both wide linear symbols
@@ -897,19 +924,6 @@ body.is-symbol-fullscreen .ptr { display: none; }
 
 /* The symbol keeps its aspect ratio and grows to the largest size that fits. */
 .fullscreen-symbol > svg { display: block; width: 100%; height: 100%; }
-
-#print-area { display: none; }
-
-@media print {
-  body { background: #fff; }
-  body > *:not(#print-area) { display: none !important; }
-  #print-area {
-    display: block !important;
-    padding: 0;
-    margin: 0;
-  }
-  #print-area svg, #print-area img { display: block; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

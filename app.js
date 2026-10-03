@@ -17,7 +17,7 @@
      7.  Decode pipeline
      8.  Results rendering
      9.  Barcode generation (JsBarcode for 1D, qrcode-generator for 2D)
-     10. Render + export (SVG / PNG / clipboard / print)
+     10. Render + clipboard copy
      11. Saved barcode library (localStorage)
      12. Wiring and init
    ========================================================================== */
@@ -72,27 +72,6 @@ function toast(message, ms) {
   }, ms || 2600);
 }
 
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
-/** A filesystem-safe stem for downloads, derived from the decoded payload. */
-function slugify(text) {
-  const s = String(text || 'barcode')
-    .replace(/[^\w.-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
-  return s || 'barcode';
-}
-
 /* =============================================================================
    2. Symbology tables
    ========================================================================== */
@@ -140,9 +119,6 @@ const EXTRA_ENCODERS = [
 /** Formats excluded unless "include rare formats" is ticked — they are slow
  *  and, in the case of the DataBar family, prone to false positives on noise. */
 const RARE_FORMATS = ['RSS_14', 'RSS_EXPANDED', 'MAXICODE'];
-
-/** Print width used when the user hits Print, in mm. */
-const PRINT_WIDTH_MM = 60;
 
 const LIB = {
   zxing: window.ZXing || null,
@@ -201,6 +177,8 @@ const state = {
   hasSymbol: false,
   /** @type {'scan'|'viewing'|'editing'} which view the page is showing */
   mode: 'scan',
+  /** true once a read has succeeded: steps 1–3 are tucked away until asked for */
+  scanCollapsed: false,
   decodeToken: 0,
   busy: false,
 };
@@ -254,6 +232,8 @@ function setSourceFromDrawable(drawable, name) {
   state.baseGray = null;
   state.results = [];
   state.selected = 0;
+  state.scanCollapsed = false;
+  setScanStepsExpanded(true);
 
   // A new photo replaces everything, including a scan still running on the
   // previous one: bumping the token makes that loop bail out at its next step.
@@ -855,6 +835,11 @@ function renderResults(ms, mode) {
   $('#find-more-btn').hidden = false;
 
   selectResult(state.selected, true);
+
+  // A photo that reads successfully no longer needs the earlier steps, so they
+  // are tucked away and the page lands on the rebuilt barcode. Asking for
+  // *more* results keeps the list on screen instead.
+  if (mode !== 'more') collapseScanFlow();
 }
 
 function selectResult(index, silent) {
@@ -1130,7 +1115,6 @@ function renderBarcode() {
     errorEl.className = 'notice notice--error';
     frame.textContent = '';
     $('#render-meta').textContent = '';
-    $('#render-warning').hidden = true;
     state.render = null;
     // Nothing to show full screen any more, so hand the interface back.
     syncFullscreenSymbol();
@@ -1176,7 +1160,6 @@ function updateRenderMeta(r) {
   const minMm = (r.entry.minMm || (sym && sym.minMm) || 0.19);
 
   const minPrintMm = Math.max(12, modulesAcross * minMm);
-  const barMmAtPrint = PRINT_WIDTH_MM / modulesAcross;
 
   const pxW = r.canvas ? r.canvas.width : r.widthPx;
   const pxH = r.canvas ? r.canvas.height : r.heightPx;
@@ -1186,31 +1169,6 @@ function updateRenderMeta(r) {
     + ` + ${r.quiet * 2} quiet \u00b7 ${pxW}\u00d7${pxH} px`
     + ` \u00b7 prints cleanly at \u2265 ${round1(minPrintMm)} mm wide`
     + ` (bars \u2265 ${round1(minMm * 10) / 10} mm)`;
-
-  const warnEl = $('#render-warning');
-  warnEl.className = 'notice notice--warn';
-
-  if (r.entry.kind === '2d') {
-    // QR modules want to be reasonably large for phone cameras.
-    const moduleMm = minPrintMm / modulesAcross;
-    if (moduleMm < minMm) {
-      warnEl.textContent = `Very dense symbol: each module is only ${round1(moduleMm * 100) / 100} mm at ${PRINT_WIDTH_MM} mm wide. Print larger for reliable scanning.`;
-      warnEl.hidden = false;
-    } else {
-      warnEl.hidden = true;
-    }
-    return;
-  }
-
-  if (barMmAtPrint < minMm) {
-    warnEl.textContent =
-      `At ${PRINT_WIDTH_MM} mm wide each bar would be ${round1(barMmAtPrint * 100) / 100} mm, `
-      + `below the ${minMm} mm recommended minimum for ${r.entry.label}. `
-      + `Print at least ${round1(minPrintMm)} mm wide.`;
-    warnEl.hidden = false;
-  } else {
-    warnEl.hidden = true;
-  }
 }
 
 function canvasToPngBlob(canvas) {
@@ -1229,24 +1187,6 @@ function canvasToPngBlob(canvas) {
   });
 }
 
-async function exportPng() {
-  if (!state.render) return;
-  try {
-    const blob = await canvasToPngBlob(state.render.canvas);
-    downloadBlob(blob, `${slugify(state.render.entry.id)}-${slugify($('#data-input').value)}.png`);
-    toast(`PNG downloaded (${state.render.canvas.width}\u00d7${state.render.canvas.height} px).`);
-  } catch (err) {
-    toast('Could not create the PNG.');
-  }
-}
-
-function exportSvg() {
-  if (!state.render) return;
-  const blob = new Blob([state.render.svg], { type: 'image/svg+xml;charset=utf-8' });
-  downloadBlob(blob, `${slugify(state.render.entry.id)}-${slugify($('#data-input').value)}.svg`);
-  toast('SVG downloaded — infinitely scalable, ideal for print.');
-}
-
 async function copyImage() {
   if (!state.render) return;
   try {
@@ -1257,32 +1197,8 @@ async function copyImage() {
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
     toast('Barcode copied to the clipboard.');
   } catch (err) {
-    toast('This browser will not copy images — use Download PNG instead.');
+    toast('This browser will not copy images.');
   }
-}
-
-function printBarcode() {
-  if (!state.render) return;
-  const r = state.render;
-  const modulesAcross = r.modules + r.quiet * 2;
-  const minMm = (r.entry.minMm || 0.19);
-  const widthMm = clamp(Math.max(PRINT_WIDTH_MM, modulesAcross * minMm), 20, 200);
-  const heightMm = (r.heightPx / r.widthPx) * widthMm;
-
-  const area = $('#print-area');
-  area.innerHTML = r.svg;
-
-  const svgEl = area.firstElementChild;
-  if (svgEl) {
-    svgEl.setAttribute('width', `${round1(widthMm)}mm`);
-    svgEl.setAttribute('height', `${round1(heightMm)}mm`);
-    svgEl.setAttribute('viewBox', `0 0 ${r.widthPx} ${r.heightPx}`);
-    svgEl.style.width = `${round1(widthMm)}mm`;
-    svgEl.style.height = `${round1(heightMm)}mm`;
-  }
-
-  toast(`Printing at ${round1(widthMm)} mm wide.`);
-  setTimeout(() => window.print(), 120);
 }
 
 /* =============================================================================
@@ -1444,7 +1360,7 @@ function openSaved(id) {
   highlightLibrary();
   syncSaveControls();
   setMode('viewing');
-  $('#output-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 
   toast(hasFormat
     ? `Opened “${record.name}”.`
@@ -1586,6 +1502,23 @@ function syncSaveControls() {
   $('#save-mode').textContent = record
     ? `Editing “${record.name}” · saved ${formatSavedAt(record.updatedAt)}`
     : 'Not saved yet';
+  syncSaveHeader();
+}
+
+/**
+ * The save panel is headed by the barcode's name while a saved barcode is on
+ * screen, and by the step number in the scanning flow. It reads the same
+ * record `syncSaveControls()` does, but is gated on the view mode so saving a
+ * fresh decode does not rename the step-5 heading mid-flow.
+ */
+function syncSaveHeader() {
+  const record = state.mode !== 'scan' && library.editingId
+    ? library.items.find((i) => i.id === library.editingId)
+    : null;
+  $('#save-panel').classList.toggle('is-saved', !!record);
+  $('#save-step').hidden = !!record;
+  $('#save-title').textContent = record ? record.name : 'Save in this browser';
+  $('#save-subtitle').hidden = !record;
 }
 
 /* =============================================================================
@@ -1660,16 +1593,35 @@ function syncOutputPanels() {
 }
 
 /**
+ * Open or close a disclosure: the heading's button owns `aria-expanded` and the
+ * matching body is shown or hidden.
+ */
+function isDisclosureOpen(toggle) {
+  return !!toggle && toggle.getAttribute('aria-expanded') === 'true';
+}
+
+function setDisclosure(toggle, body, on) {
+  if (!toggle || !body) return;
+  body.hidden = !on;
+  toggle.setAttribute('aria-expanded', String(on));
+}
+
+/** Open or close the three collapsible scan steps together. */
+function setScanStepsExpanded(on) {
+  [['#input-toggle', '#input-disclosure'],
+    ['#source-toggle', '#source-disclosure'],
+    ['#results-toggle', '#results-disclosure']].forEach(([t, b]) => {
+    setDisclosure($(t), $(b), on);
+  });
+}
+
+/**
  * Open or close the advanced options panel. Collapsed by default so the page
  * stays short; a saved barcode forces it open because the symbol *is* the
  * content in that view.
  */
 function setOutputExpanded(on) {
-  const body = $('#output-body');
-  const toggle = $('#output-toggle');
-  if (!body || !toggle) return;
-  body.hidden = !on;
-  toggle.setAttribute('aria-expanded', String(on));
+  setDisclosure($('#output-toggle'), $('#output-body'), on);
 }
 
 function setMode(mode) {
@@ -1681,7 +1633,6 @@ function setMode(mode) {
   leadWithOutputPanel(saved);
 
   // Photo picker <-> "add a new barcode" bar.
-  $('#input-panel').hidden = saved;
   $('#new-barcode-bar').hidden = !saved;
 
   // The rebuild options are for editing; a saved barcode is read-only by
@@ -1689,7 +1640,11 @@ function setMode(mode) {
   // is hidden in that view — see syncOutputPanels().
   $('#edit-saved-btn').hidden = state.mode !== 'viewing';
 
-  // The decode panels belong to the scanning flow only.
+  // The decode panels belong to the scanning flow only. Their *bodies* collapse
+  // after a successful read (see collapseScanFlow); the panels themselves stay
+  // put so their headings — and the way back — remain available.
+  $('#input-panel').hidden = saved;
+  syncScanAgainButton();
   if (saved) {
     $('#source-panel').hidden = true;
     $('#results-panel').hidden = true;
@@ -1709,9 +1664,47 @@ function setMode(mode) {
   // open while re-reading or picking a different result.
   if (state.mode !== previous) setOutputExpanded(saved);
 
+  // A saved barcode heads the save panel with its own name and the landscape hint.
+  syncSaveHeader();
+
+  // The preview metadata line belongs to the scanning flow; the saved view
+  // shows just the symbol.
+  $('#render-meta').hidden = saved;
+
   // Entering or leaving the read-only saved view changes whether the options
   // panel is wanted at all.
   syncOutputPanels();
+}
+
+/**
+ * Collapse steps 1–3 once a read has succeeded and bring the barcode (step 5)
+ * into view, so a successful scan does not leave the user scrolling past the
+ * photo picker, the preview and the result list.
+ */
+function collapseScanFlow() {
+  if (state.mode !== 'scan' || !state.hasSymbol) return;
+  state.scanCollapsed = true;
+  setDisclosure($('#input-toggle'), $('#input-disclosure'), false);
+  setDisclosure($('#source-toggle'), $('#source-disclosure'), false);
+  // A multi-hit list stays open so one of them can be picked.
+  if (state.results.length < 2) {
+    setDisclosure($('#results-toggle'), $('#results-disclosure'), false);
+  }
+  syncScanAgainButton();
+  $('#save-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Re-open steps 1–3, so another photo can be picked or dropped. */
+function expandScanFlow() {
+  state.scanCollapsed = false;
+  setScanStepsExpanded(true);
+  syncScanAgainButton();
+  $('#input-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** The way back to the picker is offered only while the flow is tucked away. */
+function syncScanAgainButton() {
+  $('#scan-again-btn').hidden = !(state.mode === 'scan' && state.scanCollapsed);
 }
 
 /** Leave a saved barcode behind and go back to reading a new one. */
@@ -1719,6 +1712,8 @@ function startNewBarcode() {
   // Detach from the saved record so the next Save creates a new entry.
   library.editingId = null;
   $('#save-name').value = '';
+  state.scanCollapsed = false;
+  setScanStepsExpanded(true);
   syncSaveControls();
   highlightLibrary();
 
@@ -1889,6 +1884,23 @@ function wireEvents() {
   /* --- decode --- */
   $('#decode-btn').addEventListener('click', () => startRead());
   $('#find-more-btn').addEventListener('click', () => startRead('more'));
+  $('#scan-again-btn').addEventListener('click', expandScanFlow);
+
+  /* --- collapsible scan steps --- */
+  [['#input-toggle', '#input-disclosure'],
+    ['#source-toggle', '#source-disclosure'],
+    ['#results-toggle', '#results-disclosure']].forEach(([t, b]) => {
+    const toggle = $(t);
+    toggle.addEventListener('click', () => {
+      const opening = !isDisclosureOpen(toggle);
+      setDisclosure(toggle, $(b), opening);
+      // Opening one by hand is the same intent as "Read another photo".
+      if (opening) {
+        state.scanCollapsed = false;
+        syncScanAgainButton();
+      }
+    });
+  });
 
   /* --- output controls --- */
   const regenerating = ['#opt-module-width', '#opt-height', '#opt-quiet', '#opt-showtext',
@@ -1916,10 +1928,7 @@ function wireEvents() {
   });
 
   /* --- exports --- */
-  $('#download-png').addEventListener('click', exportPng);
-  $('#download-svg').addEventListener('click', exportSvg);
   $('#copy-image').addEventListener('click', copyImage);
-  $('#print-btn').addEventListener('click', printBarcode);
 
   /* --- save + library --- */
   $('#save-btn').addEventListener('click', saveCurrentBarcode);
