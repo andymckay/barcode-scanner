@@ -1497,8 +1497,7 @@ function syncSaveControls() {
     ? library.items.find((i) => i.id === library.editingId)
     : null;
 
-  $('#save-btn').textContent = record ? 'Update saved barcode' : 'Save barcode';
-  $('#save-new-btn').hidden = !record;
+  $('#save-btn').textContent = record ? 'Update' : 'Save barcode';
   $('#save-mode').textContent = record
     ? `Editing “${record.name}” · saved ${formatSavedAt(record.updatedAt)}`
     : 'Not saved yet';
@@ -1937,15 +1936,6 @@ function wireEvents() {
       ev.preventDefault();
       saveCurrentBarcode();
     }
-  });
-  $('#save-new-btn').addEventListener('click', () => {
-    // Detach from the open record so the next Save creates a separate entry.
-    library.editingId = null;
-    $('#save-name').value = '';
-    syncSaveControls();
-    highlightLibrary();
-    $('#save-name').focus();
-    toast('Ready to save as a new entry — name it and press Save.');
   });
 
   /* --- view modes --- */
